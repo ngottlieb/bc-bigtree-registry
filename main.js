@@ -1,3 +1,8 @@
+// initialize info modal and show it on pageload
+const modal = new bootstrap.Modal(document.getElementById('infoModal'));
+modal.show();
+
+// initialize the leaflet map
 const map = L.map('map').setView([54.916, -125.701], 6);
 
 L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}', {
@@ -9,21 +14,73 @@ L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_toke
     accessToken: 'pk.eyJ1IjoibmdvdHRsaWViIiwiYSI6ImNrcGtlc2J5eDFodGwybm85bWR4Mjd5cncifQ.fCXujwpKwP1mbLXC2hklkw'
 }).addTo(map);
 
-Papa.parse('BCBT_conifers_032021.csv', {
-  download: true,
-  header: true,
-  complete: addResultsToMap
+const legend = L.control({position: 'bottomright'});
+legend.onAdd = function (map) {
+  const div = L.DomUtil.create('div', 'legend');
+  div.innerHTML = `
+    <img src="conifer.png" alt="An icon representing conifer trees" /><h6>Conifers</h6>
+    <br />
+    <img src="broadleaf.png" alt="An icon representing broadleaf trees" /><h6>Broadleaves</h6>
+  `;
+  return div;
+}
+legend.addTo(map);
+
+const infoButton = L.control({ position: 'bottomright' });
+infoButton.onAdd = function (map) {
+  const div = L.DomUtil.create('div', 'info-button-container');
+  div.innerHTML = `<button class="btn btn-primary info" data-bs-toggle="modal" data-bs-target="#infoModal">More Info</button>`;
+  return div;
+}
+infoButton.addTo(map);
+
+const TreeIcon = L.Icon.extend({
+  options: {
+    iconSize: [38, 38]
+  }
 });
 
-function addResultsToMap(results) {
-  results.data.forEach(createMarker);
+const coniferIcon = new TreeIcon({
+  iconUrl: 'conifer.png'
+});
+
+const broadleafIcon = new TreeIcon({
+  iconUrl: 'broadleaf.png'
+});
+
+
+
+// load CSV data
+Papa.parse('BCBT_broadleaves_March_2021.csv', {
+  download: true,
+  header: true,
+  complete: function(results) {
+    addResultsToMap(results, "broadleaf")
+  }
+});
+
+Papa.parse('BCBT_conifers_March_2021.csv', {
+  download: true,
+  header: true,
+  complete: function(results) {
+    addResultsToMap(results, "conifer")
+  }
+});
+
+function addResultsToMap(results, treeType) {
+  results.data.forEach(function(x) { createMarker(x, treeType) });
 }
 
-function createMarker(tree) {
+function createMarker(tree, treeType) {
   if (tree.latitude && tree.longitude) {
-    const marker = L.marker([tree.latitude, tree.longitude]);
+    const marker = L.marker(
+      [tree.latitude, tree.longitude],
+      {
+        icon: treeType === 'conifer' ? coniferIcon : broadleafIcon
+      }
+    );
     marker.addTo(map);
-    marker.bindPopup(popupHTML(tree));
+    marker.bindPopup(popupHTML(tree), { maxHeight: 400 });
   }
 }
 
@@ -60,6 +117,3 @@ function popupHTML(tree) {
   output += "</dl>";
   return output;
 }
-
-var modal = new bootstrap.Modal(document.getElementById('infoModal'));
-modal.show();

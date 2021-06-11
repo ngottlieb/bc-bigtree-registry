@@ -48,8 +48,6 @@ const broadleafIcon = new TreeIcon({
   iconUrl: 'broadleaf.png'
 });
 
-
-
 // load CSV data
 Papa.parse('BCBT_broadleaves_March_2021.csv', {
   download: true,

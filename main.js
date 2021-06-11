@@ -3,7 +3,7 @@ const modal = new bootstrap.Modal(document.getElementById('infoModal'));
 modal.show();
 
 // initialize the leaflet map
-const map = L.map('map').setView([54.916, -125.701], 6);
+const map = L.map('map', { "tap": false }).setView([54.916, -125.701], 6);
 
 L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}', {
     attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',

@@ -112,6 +112,17 @@ function popupHTML(tree) {
       output += `<dt>${key}</dt><dd>${val}</dd>\n`;
     }
   }
+
+  // add lat/lng as a single field
+  const lat = tree['latitude'];
+  const lng = tree['longitude'];
+  if (lat.length && lng.length) {
+    output += `
+      <dt>Lat/lng</dt>
+      <dd>
+        <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}">${lat},${lng}</a>
+      </dd>`;
+  }
   output += "</dl>";
   return output;
 }

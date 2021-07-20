@@ -49,27 +49,31 @@ const broadleafIcon = new TreeIcon({
 });
 
 // load CSV data
-Papa.parse('BCBT_broadleaves_March_2021.csv', {
+// NOTE: thought about loading this directly from the BCBT website,
+// but it has CORS protection *and* the filename changes every time the registry is updated
+// which is just a few times a year. So figured it's really not a big issue to just
+// update the repository with a new file every time the registry is re-published.
+Papa.parse('BCBT_March_2021_update.csv', {
   download: true,
   header: true,
   complete: function(results) {
-    addResultsToMap(results, "broadleaf")
+    addResultsToMap(results);
   }
 });
 
-Papa.parse('BCBT_conifers_March_2021.csv', {
-  download: true,
-  header: true,
-  complete: function(results) {
-    addResultsToMap(results, "conifer")
-  }
-});
-
-function addResultsToMap(results, treeType) {
-  results.data.forEach(function(x) { createMarker(x, treeType) });
+function addResultsToMap(results) {
+  results.data.forEach(function(x) { createMarker(x) });
 }
 
-function createMarker(tree, treeType) {
+const broadleafTrees = ['dogwood', 'oak', 'arbutus', 'juniper', 'cottonwood', 'birch', 'maple', 'alder', 'willow', 'hawthorn', 'cascara', 'apple', 'cherry', 'aspen'];
+
+function createMarker(tree) {
+  let treeType;
+  if (broadleafTrees.some((species => tree.common_name.includes(species)))) {
+    treeType = 'broadleaf';
+  } else {
+    treeType = 'conifer';
+  }
   if (tree.latitude && tree.longitude) {
     const marker = L.marker(
       [tree.latitude, tree.longitude],

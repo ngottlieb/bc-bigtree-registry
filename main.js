@@ -53,7 +53,7 @@ const broadleafIcon = new TreeIcon({
 // but it has CORS protection *and* the filename changes every time the registry is updated
 // which is just a few times a year. So figured it's really not a big issue to just
 // update the repository with a new file every time the registry is re-published.
-Papa.parse('BCBT_March_2021_update.csv', {
+Papa.parse('data/BCBT_Dec_2021.csv', {
   download: true,
   header: true,
   complete: function(results) {
@@ -65,20 +65,12 @@ function addResultsToMap(results) {
   results.data.forEach(function(x) { createMarker(x) });
 }
 
-const broadleafTrees = ['dogwood', 'oak', 'arbutus', 'juniper', 'cottonwood', 'birch', 'maple', 'alder', 'willow', 'hawthorn', 'cascara', 'apple', 'cherry', 'aspen'];
-
 function createMarker(tree) {
-  let treeType;
-  if (broadleafTrees.some((species => tree.common_name.includes(species)))) {
-    treeType = 'broadleaf';
-  } else {
-    treeType = 'conifer';
-  }
   if (tree.latitude && tree.longitude) {
     const marker = L.marker(
       [tree.latitude, tree.longitude],
       {
-        icon: treeType === 'conifer' ? coniferIcon : broadleafIcon
+        icon: tree.tree_type === 'c' ? coniferIcon : broadleafIcon
       }
     );
     marker.addTo(map);
@@ -127,6 +119,15 @@ function popupHTML(tree) {
         <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}">${lat},${lng}</a>
       </dd>`;
   }
+
+  // add photo links if present
+  if (parseInt(tree.has_photo)) {
+    output += `
+      <dt>Photos</dt>
+      <dd>${tree['all photo formula']}</dd>
+    `;
+  }
+
   output += "</dl>";
   return output;
 }

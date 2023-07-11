@@ -53,7 +53,7 @@ const broadleafIcon = new TreeIcon({
 // but it has CORS protection *and* the filename changes every time the registry is updated
 // which is just a few times a year. So figured it's really not a big issue to just
 // update the repository with a new file every time the registry is re-published.
-Papa.parse('data/BCBT_April_25_2023.csv', {
+Papa.parse('data/BCBT_July_10_2023.csv', {
   download: true,
   header: true,
   complete: function(results) {

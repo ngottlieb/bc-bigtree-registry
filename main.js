@@ -124,7 +124,7 @@ function popupHTML(tree) {
   if (parseInt(tree.has_photo)) {
     output += `
       <dt>Photos</dt>
-      <dd>${tree['all photo formula']}</dd>
+      <dd>${tree['all photo LINK']}</dd>
     `;
   }
 

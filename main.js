@@ -77,6 +77,10 @@ speciesFilter.onAdd = function(map) {
     <select id="speciesSelect" class="form-select form-select-sm">
       <option value="">All Species</option>
     </select>
+    <div class="form-check mt-2">
+      <input class="form-check-input" type="checkbox" id="topTenCheckbox">
+      <label class="form-check-label" for="topTenCheckbox">Show top 10 only</label>
+    </div>
   `;
   L.DomEvent.disableClickPropagation(div);
   return div;
@@ -102,6 +106,7 @@ function addResultsToMap(results) {
   // Populate species dropdown with sorted unique species names
   const sortedSpecies = [...allSpecies].sort();
   const select = document.getElementById('speciesSelect');
+  const topTenCheckbox = document.getElementById('topTenCheckbox');
   sortedSpecies.forEach(function(species) {
     const option = document.createElement('option');
     option.value = species;
@@ -109,8 +114,12 @@ function addResultsToMap(results) {
     select.appendChild(option);
   });
 
-  select.addEventListener('change', function() {
-    const visibleMarkers = getVisibleMarkers(this.value);
+  function applyFilters() {
+    const visibleMarkerItems = getVisibleMarkerItems(select.value, topTenCheckbox.checked);
+    const visibleMarkers = visibleMarkerItems.map(function(item) {
+      return item.marker;
+    });
+
     markerCluster.clearLayers();
     markerCluster.addLayers(visibleMarkers);
 
@@ -118,17 +127,40 @@ function addResultsToMap(results) {
     if (bounds.isValid()) {
       map.fitBounds(bounds.pad(0.2), { maxZoom: 13 });
     }
-  });
+  }
+
+  select.addEventListener('change', applyFilters);
+  topTenCheckbox.addEventListener('change', applyFilters);
 }
 
-function getVisibleMarkers(selectedSpecies) {
-  return allMarkers
+function getVisibleMarkerItems(selectedSpecies, showTopTen) {
+  const filteredItems = allMarkers
     .filter(function(item) {
       return !selectedSpecies || item.species === selectedSpecies;
-    })
-    .map(function(item) {
-      return item.marker;
     });
+
+  if (!showTopTen) {
+    return filteredItems;
+  }
+
+  return filteredItems
+    .filter(function(item) {
+      return item.score !== null && !hasDisqualifyingScoreSuffix(item.scoreRaw);
+    })
+    .sort(function(a, b) {
+      return b.score - a.score;
+    })
+    .slice(0, 10);
+}
+
+function hasDisqualifyingScoreSuffix(scoreRaw) {
+  return /['"]\s*$/.test(String(scoreRaw || '').trim());
+}
+
+function parseTreeScore(scoreRaw) {
+  const normalized = String(scoreRaw || '').trim();
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatSpeciesDisplayName(species) {
@@ -167,7 +199,12 @@ function createMarker(tree) {
   markerCluster.addLayer(marker);
   marker.bindPopup(popupHTML(tree), { maxHeight: 400 });
 
-  allMarkers.push({ marker: marker, species: tree.common_name || '' });
+  allMarkers.push({
+    marker: marker,
+    species: tree.common_name || '',
+    scoreRaw: tree.tree_score,
+    score: parseTreeScore(tree.tree_score)
+  });
 
   if (tree.common_name) {
     allSpecies.add(tree.common_name);

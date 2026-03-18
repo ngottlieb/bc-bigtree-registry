@@ -48,6 +48,15 @@ const broadleafIcon = new TreeIcon({
   iconUrl: 'broadleaf.png'
 });
 
+const markerCluster = L.markerClusterGroup({
+  disableClusteringAtZoom: 14,
+  maxClusterRadius: 55,
+  showCoverageOnHover: false,
+  spiderfyOnMaxZoom: true,
+  chunkedLoading: true
+});
+map.addLayer(markerCluster);
+
 // Store all markers with their species name for filtering
 const allMarkers = [];
 const allSpecies = new Set();
@@ -89,20 +98,47 @@ function addResultsToMap(results) {
   sortedSpecies.forEach(function(species) {
     const option = document.createElement('option');
     option.value = species;
-    option.textContent = species;
+    option.textContent = formatSpeciesDisplayName(species);
     select.appendChild(option);
   });
 
   select.addEventListener('change', function() {
     const selected = this.value;
+
     allMarkers.forEach(function(item) {
       if (!selected || item.species === selected) {
-        item.marker.addTo(map);
+        markerCluster.addLayer(item.marker);
       } else {
-        item.marker.remove();
+        markerCluster.removeLayer(item.marker);
       }
     });
+
+    const bounds = markerCluster.getBounds();
+    if (bounds.isValid()) {
+      map.fitBounds(bounds.pad(0.2), { maxZoom: 13 });
+    }
   });
+}
+
+function formatSpeciesDisplayName(species) {
+  const hasCoastalMarker = species.includes('*');
+  const hasInteriorMarker = species.includes('^');
+
+  const baseName = species
+    .replace(/[*^]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\b[a-z]/g, function(letter) {
+      return letter.toUpperCase();
+    });
+
+  if (hasInteriorMarker) {
+    return `${baseName} (interior)`;
+  }
+  if (hasCoastalMarker) {
+    return `${baseName} (coastal)`;
+  }
+  return baseName;
 }
 
 function createMarker(tree) {
@@ -113,7 +149,7 @@ function createMarker(tree) {
         icon: tree.tree_type === 'c' ? coniferIcon : broadleafIcon
       }
     );
-    marker.addTo(map);
+    markerCluster.addLayer(marker);
     marker.bindPopup(popupHTML(tree), { maxHeight: 400 });
 
     if (tree.common_name) {

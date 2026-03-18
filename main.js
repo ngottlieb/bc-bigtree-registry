@@ -73,19 +73,25 @@ const speciesFilter = L.control({ position: 'topright' });
 speciesFilter.onAdd = function(map) {
   const div = L.DomUtil.create('div', 'species-filter');
   div.innerHTML = `
-    <label for="speciesSelect"><strong>Filter by Species</strong></label>
-    <select id="speciesSelect" class="form-select form-select-sm">
-      <option value="">All Species</option>
-    </select>
-    <div class="form-check mt-2">
-      <input class="form-check-input" type="checkbox" id="topTenCheckbox">
-      <label class="form-check-label" for="topTenCheckbox">Show top 10 only</label>
+    <div class="species-filter-header">
+      <label for="speciesSelect"><strong>Filter by Species</strong></label>
+      <button id="speciesFilterToggleBtn" type="button" class="species-filter-toggle-btn" aria-label="Hide filter controls" aria-expanded="true">Hide</button>
+    </div>
+    <div class="species-filter-body">
+      <select id="speciesSelect" class="form-select form-select-sm">
+        <option value="">All Species</option>
+      </select>
+      <div class="form-check mt-2">
+        <input class="form-check-input" type="checkbox" id="topTenCheckbox">
+        <label class="form-check-label" for="topTenCheckbox">Show top 10 only</label>
+      </div>
     </div>
   `;
   L.DomEvent.disableClickPropagation(div);
   return div;
 };
 speciesFilter.addTo(map);
+initSpeciesFilterMobileToggle();
 
 // load CSV data
 // NOTE: thought about loading this directly from the BCBT website,
@@ -151,6 +157,54 @@ function getVisibleMarkerItems(selectedSpecies, showTopTen) {
       return b.score - a.score;
     })
     .slice(0, 10);
+}
+
+function initSpeciesFilterMobileToggle() {
+  const filterPanel = document.querySelector('.species-filter');
+  const toggleBtn = document.getElementById('speciesFilterToggleBtn');
+  if (!filterPanel || !toggleBtn) {
+    return;
+  }
+
+  L.DomEvent.disableClickPropagation(toggleBtn);
+  L.DomEvent.disableScrollPropagation(toggleBtn);
+
+  function isMobileViewport() {
+    return window.matchMedia('(max-width: 768px)').matches;
+  }
+
+  function funnelIconMarkup() {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z" fill="currentColor"></path></svg>';
+  }
+
+  function setCollapsed(collapsed) {
+    filterPanel.classList.toggle('mobile-collapsed', collapsed);
+    if (collapsed && isMobileViewport()) {
+      toggleBtn.classList.add('compact');
+      toggleBtn.innerHTML = funnelIconMarkup();
+    } else {
+      toggleBtn.classList.remove('compact');
+      toggleBtn.textContent = 'Hide';
+    }
+    toggleBtn.setAttribute('aria-label', collapsed ? 'Show filter box' : 'Hide filter box');
+    toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+  }
+
+  toggleBtn.addEventListener('click', function() {
+    if (!isMobileViewport()) {
+      return;
+    }
+    const isCollapsed = filterPanel.classList.contains('mobile-collapsed');
+    setCollapsed(!isCollapsed);
+  });
+
+  window.addEventListener('resize', function() {
+    if (!isMobileViewport()) {
+      setCollapsed(false);
+    }
+  });
+
+  setCollapsed(false);
 }
 
 function hasDisqualifyingScoreSuffix(scoreRaw) {

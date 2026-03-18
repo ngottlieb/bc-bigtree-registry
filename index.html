@@ -74,10 +74,91 @@
       min-width: 200px;
     }
 
+    .species-filter-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
     .species-filter label {
       display: block;
-      margin-bottom: 4px;
+      margin-bottom: 0;
       font-size: 0.875rem;
+    }
+
+    .species-filter-toggle-btn {
+      display: none;
+      border: 1px solid rgba(31, 41, 51, 0.25);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.95);
+      color: #1f2933;
+      padding: 4px 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      line-height: 1.2;
+      cursor: pointer;
+    }
+
+    .species-filter-toggle-btn.compact {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .species-filter-toggle-btn.compact svg {
+      width: 15px;
+      height: 15px;
+      display: block;
+    }
+
+    @media (max-width: 768px) {
+      .species-filter-toggle-btn {
+        display: block;
+      }
+
+      .species-filter {
+        min-width: 170px;
+      }
+
+      .species-filter .species-filter-body {
+        transition: opacity 160ms ease;
+        opacity: 1;
+      }
+
+      .species-filter.mobile-collapsed .species-filter-body {
+        display: none;
+      }
+
+      .species-filter.mobile-collapsed {
+        min-width: auto;
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
+        border-radius: 0;
+      }
+
+      .leaflet-right .species-filter.mobile-collapsed {
+        margin-right: 0;
+      }
+
+      .species-filter.mobile-collapsed .species-filter-header {
+        margin-bottom: 0;
+      }
+
+      .species-filter.mobile-collapsed label {
+        display: none;
+      }
+
+      .species-filter.mobile-collapsed .species-filter-toggle-btn {
+        border-right: 0;
+        border-radius: 10px 0 0 10px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+      }
     }
   </style>
 </head>

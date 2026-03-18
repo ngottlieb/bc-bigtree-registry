@@ -48,6 +48,25 @@ const broadleafIcon = new TreeIcon({
   iconUrl: 'broadleaf.png'
 });
 
+// Store all markers with their species name for filtering
+const allMarkers = [];
+const allSpecies = new Set();
+
+// Species filter control
+const speciesFilter = L.control({ position: 'topright' });
+speciesFilter.onAdd = function(map) {
+  const div = L.DomUtil.create('div', 'species-filter');
+  div.innerHTML = `
+    <label for="speciesSelect"><strong>Filter by Species</strong></label>
+    <select id="speciesSelect" class="form-select form-select-sm">
+      <option value="">All Species</option>
+    </select>
+  `;
+  L.DomEvent.disableClickPropagation(div);
+  return div;
+};
+speciesFilter.addTo(map);
+
 // load CSV data
 // NOTE: thought about loading this directly from the BCBT website,
 // but it has CORS protection *and* the filename changes every time the registry is updated
@@ -63,6 +82,27 @@ Papa.parse('data/BCBT_Jan_5_2026.csv', {
 
 function addResultsToMap(results) {
   results.data.forEach(function(x) { createMarker(x) });
+
+  // Populate species dropdown with sorted unique species names
+  const sortedSpecies = [...allSpecies].sort();
+  const select = document.getElementById('speciesSelect');
+  sortedSpecies.forEach(function(species) {
+    const option = document.createElement('option');
+    option.value = species;
+    option.textContent = species;
+    select.appendChild(option);
+  });
+
+  select.addEventListener('change', function() {
+    const selected = this.value;
+    allMarkers.forEach(function(item) {
+      if (!selected || item.species === selected) {
+        item.marker.addTo(map);
+      } else {
+        item.marker.remove();
+      }
+    });
+  });
 }
 
 function createMarker(tree) {
@@ -75,6 +115,11 @@ function createMarker(tree) {
     );
     marker.addTo(map);
     marker.bindPopup(popupHTML(tree), { maxHeight: 400 });
+
+    if (tree.common_name) {
+      allMarkers.push({ marker: marker, species: tree.common_name });
+      allSpecies.add(tree.common_name);
+    }
   }
 }
 

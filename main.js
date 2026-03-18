@@ -221,10 +221,12 @@ function popupHTML(tree) {
     if (!attrs.hasOwnProperty(key)) {
       next;
     }
-    const val = tree[attrs[key]];
+    const attrKey = attrs[key];
+    const val = tree[attrKey];
 
     if (val) {
-      output += `<dt>${key}</dt><dd>${val}</dd>\n`;
+      const displayVal = attrKey === 'common_name' ? formatSpeciesDisplayName(val) : val;
+      output += `<dt>${key}</dt><dd>${displayVal}</dd>\n`;
     }
   }
 

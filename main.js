@@ -48,6 +48,51 @@ const broadleafIcon = new TreeIcon({
   iconUrl: 'broadleaf.png'
 });
 
+const markerCluster = L.markerClusterGroup({
+  disableClusteringAtZoom: 14,
+  maxClusterRadius: 55,
+  showCoverageOnHover: false,
+  spiderfyOnMaxZoom: true,
+  chunkedLoading: true
+});
+map.addLayer(markerCluster);
+
+const BC_COORD_BOUNDS = {
+  minLat: 47,
+  maxLat: 61,
+  minLng: -141,
+  maxLng: -110
+};
+
+// Store all markers with their species name for filtering
+const allMarkers = [];
+const allSpecies = new Set();
+
+// Species filter control
+const speciesFilter = L.control({ position: 'topright' });
+speciesFilter.onAdd = function(map) {
+  const div = L.DomUtil.create('div', 'species-filter');
+  div.innerHTML = `
+    <div class="species-filter-header">
+      <label for="speciesSelect"><strong>Filter by Species</strong></label>
+      <button id="speciesFilterToggleBtn" type="button" class="species-filter-toggle-btn" aria-label="Hide filter controls" aria-expanded="true">Hide</button>
+    </div>
+    <div class="species-filter-body">
+      <select id="speciesSelect" class="form-select form-select-sm">
+        <option value="">All Species</option>
+      </select>
+      <div class="form-check mt-2">
+        <input class="form-check-input" type="checkbox" id="topTenCheckbox">
+        <label class="form-check-label" for="topTenCheckbox">Show top 10 only</label>
+      </div>
+    </div>
+  `;
+  L.DomEvent.disableClickPropagation(div);
+  return div;
+};
+speciesFilter.addTo(map);
+initSpeciesFilterMobileToggle();
+
 // load CSV data
 // NOTE: thought about loading this directly from the BCBT website,
 // but it has CORS protection *and* the filename changes every time the registry is updated
@@ -63,19 +108,184 @@ Papa.parse('data/BCBT_Jan_5_2026.csv', {
 
 function addResultsToMap(results) {
   results.data.forEach(function(x) { createMarker(x) });
+
+  // Populate species dropdown with sorted unique species names
+  const sortedSpecies = [...allSpecies].sort();
+  const select = document.getElementById('speciesSelect');
+  const topTenCheckbox = document.getElementById('topTenCheckbox');
+  sortedSpecies.forEach(function(species) {
+    const option = document.createElement('option');
+    option.value = species;
+    option.textContent = formatSpeciesDisplayName(species);
+    select.appendChild(option);
+  });
+
+  function applyFilters() {
+    const visibleMarkerItems = getVisibleMarkerItems(select.value, topTenCheckbox.checked);
+    const visibleMarkers = visibleMarkerItems.map(function(item) {
+      return item.marker;
+    });
+
+    markerCluster.clearLayers();
+    markerCluster.addLayers(visibleMarkers);
+
+    const bounds = L.featureGroup(visibleMarkers).getBounds();
+    if (bounds.isValid()) {
+      map.fitBounds(bounds.pad(0.2), { maxZoom: 13 });
+    }
+  }
+
+  select.addEventListener('change', applyFilters);
+  topTenCheckbox.addEventListener('change', applyFilters);
+}
+
+function getVisibleMarkerItems(selectedSpecies, showTopTen) {
+  const filteredItems = allMarkers
+    .filter(function(item) {
+      return !selectedSpecies || item.species === selectedSpecies;
+    });
+
+  if (!showTopTen) {
+    return filteredItems;
+  }
+
+  return filteredItems
+    .filter(function(item) {
+      return item.score !== null && !hasDisqualifyingScoreSuffix(item.scoreRaw);
+    })
+    .sort(function(a, b) {
+      return b.score - a.score;
+    })
+    .slice(0, 10);
+}
+
+function initSpeciesFilterMobileToggle() {
+  const filterPanel = document.querySelector('.species-filter');
+  const toggleBtn = document.getElementById('speciesFilterToggleBtn');
+  if (!filterPanel || !toggleBtn) {
+    return;
+  }
+
+  L.DomEvent.disableClickPropagation(toggleBtn);
+  L.DomEvent.disableScrollPropagation(toggleBtn);
+
+  function isMobileViewport() {
+    return window.matchMedia('(max-width: 768px)').matches;
+  }
+
+  function funnelIconMarkup() {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z" fill="currentColor"></path></svg>';
+  }
+
+  function setCollapsed(collapsed) {
+    filterPanel.classList.toggle('mobile-collapsed', collapsed);
+    if (collapsed && isMobileViewport()) {
+      toggleBtn.classList.add('compact');
+      toggleBtn.innerHTML = funnelIconMarkup();
+    } else {
+      toggleBtn.classList.remove('compact');
+      toggleBtn.textContent = 'Hide';
+    }
+    toggleBtn.setAttribute('aria-label', collapsed ? 'Show filter box' : 'Hide filter box');
+    toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+  }
+
+  toggleBtn.addEventListener('click', function() {
+    if (!isMobileViewport()) {
+      return;
+    }
+    const isCollapsed = filterPanel.classList.contains('mobile-collapsed');
+    setCollapsed(!isCollapsed);
+  });
+
+  window.addEventListener('resize', function() {
+    if (!isMobileViewport()) {
+      setCollapsed(false);
+    }
+  });
+
+  setCollapsed(false);
+}
+
+function hasDisqualifyingScoreSuffix(scoreRaw) {
+  return /['"]\s*$/.test(String(scoreRaw || '').trim());
+}
+
+function parseTreeScore(scoreRaw) {
+  const normalized = String(scoreRaw || '').trim();
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatSpeciesDisplayName(species) {
+  const hasCoastalMarker = species.includes('*');
+  const hasInteriorMarker = species.includes('^');
+
+  const baseName = species
+    .replace(/[*^]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\b[a-z]/g, function(letter) {
+      return letter.toUpperCase();
+    });
+
+  if (hasInteriorMarker) {
+    return `${baseName} (interior)`;
+  }
+  if (hasCoastalMarker) {
+    return `${baseName} (coastal)`;
+  }
+  return baseName;
 }
 
 function createMarker(tree) {
-  if (tree.latitude && tree.longitude) {
-    const marker = L.marker(
-      [tree.latitude, tree.longitude],
-      {
-        icon: tree.tree_type === 'c' ? coniferIcon : broadleafIcon
-      }
-    );
-    marker.addTo(map);
-    marker.bindPopup(popupHTML(tree), { maxHeight: 400 });
+  const latLng = getValidTreeLatLng(tree);
+  if (!latLng) {
+    return;
   }
+
+  const marker = L.marker(
+    latLng,
+    {
+      icon: tree.tree_type === 'c' ? coniferIcon : broadleafIcon
+    }
+  );
+  markerCluster.addLayer(marker);
+  marker.bindPopup(popupHTML(tree), { maxHeight: 400 });
+
+  allMarkers.push({
+    marker: marker,
+    species: tree.common_name || '',
+    scoreRaw: tree.tree_score,
+    score: parseTreeScore(tree.tree_score)
+  });
+
+  if (tree.common_name) {
+    allSpecies.add(tree.common_name);
+  }
+}
+
+function getValidTreeLatLng(tree) {
+  const lat = Number(tree.latitude);
+  let lng = Number(tree.longitude);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  // Correct obvious hemisphere sign typos in BC data (e.g. 121.x should be -121.x).
+  if (lng > 0 && lng >= Math.abs(BC_COORD_BOUNDS.maxLng) && lng <= Math.abs(BC_COORD_BOUNDS.minLng)) {
+    lng = -lng;
+  }
+
+  if (lat < BC_COORD_BOUNDS.minLat || lat > BC_COORD_BOUNDS.maxLat) {
+    return null;
+  }
+  if (lng < BC_COORD_BOUNDS.minLng || lng > BC_COORD_BOUNDS.maxLng) {
+    return null;
+  }
+
+  return [lat, lng];
 }
 
 function popupHTML(tree) {
@@ -102,10 +312,12 @@ function popupHTML(tree) {
     if (!attrs.hasOwnProperty(key)) {
       next;
     }
-    const val = tree[attrs[key]];
+    const attrKey = attrs[key];
+    const val = tree[attrKey];
 
     if (val) {
-      output += `<dt>${key}</dt><dd>${val}</dd>\n`;
+      const displayVal = attrKey === 'common_name' ? formatSpeciesDisplayName(val) : val;
+      output += `<dt>${key}</dt><dd>${displayVal}</dd>\n`;
     }
   }
 

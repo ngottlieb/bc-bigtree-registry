@@ -57,6 +57,13 @@ const markerCluster = L.markerClusterGroup({
 });
 map.addLayer(markerCluster);
 
+const BC_COORD_BOUNDS = {
+  minLat: 47,
+  maxLat: 61,
+  minLng: -141,
+  maxLng: -110
+};
+
 // Store all markers with their species name for filtering
 const allMarkers = [];
 const allSpecies = new Set();
@@ -103,21 +110,25 @@ function addResultsToMap(results) {
   });
 
   select.addEventListener('change', function() {
-    const selected = this.value;
+    const visibleMarkers = getVisibleMarkers(this.value);
+    markerCluster.clearLayers();
+    markerCluster.addLayers(visibleMarkers);
 
-    allMarkers.forEach(function(item) {
-      if (!selected || item.species === selected) {
-        markerCluster.addLayer(item.marker);
-      } else {
-        markerCluster.removeLayer(item.marker);
-      }
-    });
-
-    const bounds = markerCluster.getBounds();
+    const bounds = L.featureGroup(visibleMarkers).getBounds();
     if (bounds.isValid()) {
       map.fitBounds(bounds.pad(0.2), { maxZoom: 13 });
     }
   });
+}
+
+function getVisibleMarkers(selectedSpecies) {
+  return allMarkers
+    .filter(function(item) {
+      return !selectedSpecies || item.species === selectedSpecies;
+    })
+    .map(function(item) {
+      return item.marker;
+    });
 }
 
 function formatSpeciesDisplayName(species) {
@@ -142,21 +153,48 @@ function formatSpeciesDisplayName(species) {
 }
 
 function createMarker(tree) {
-  if (tree.latitude && tree.longitude) {
-    const marker = L.marker(
-      [tree.latitude, tree.longitude],
-      {
-        icon: tree.tree_type === 'c' ? coniferIcon : broadleafIcon
-      }
-    );
-    markerCluster.addLayer(marker);
-    marker.bindPopup(popupHTML(tree), { maxHeight: 400 });
-
-    if (tree.common_name) {
-      allMarkers.push({ marker: marker, species: tree.common_name });
-      allSpecies.add(tree.common_name);
-    }
+  const latLng = getValidTreeLatLng(tree);
+  if (!latLng) {
+    return;
   }
+
+  const marker = L.marker(
+    latLng,
+    {
+      icon: tree.tree_type === 'c' ? coniferIcon : broadleafIcon
+    }
+  );
+  markerCluster.addLayer(marker);
+  marker.bindPopup(popupHTML(tree), { maxHeight: 400 });
+
+  allMarkers.push({ marker: marker, species: tree.common_name || '' });
+
+  if (tree.common_name) {
+    allSpecies.add(tree.common_name);
+  }
+}
+
+function getValidTreeLatLng(tree) {
+  const lat = Number(tree.latitude);
+  let lng = Number(tree.longitude);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  // Correct obvious hemisphere sign typos in BC data (e.g. 121.x should be -121.x).
+  if (lng > 0 && lng >= Math.abs(BC_COORD_BOUNDS.maxLng) && lng <= Math.abs(BC_COORD_BOUNDS.minLng)) {
+    lng = -lng;
+  }
+
+  if (lat < BC_COORD_BOUNDS.minLat || lat > BC_COORD_BOUNDS.maxLat) {
+    return null;
+  }
+  if (lng < BC_COORD_BOUNDS.minLng || lng > BC_COORD_BOUNDS.maxLng) {
+    return null;
+  }
+
+  return [lat, lng];
 }
 
 function popupHTML(tree) {

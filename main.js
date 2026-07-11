@@ -5,14 +5,23 @@ modal.show();
 // initialize the leaflet map
 const map = L.map('map', { "tap": false }).setView([54.916, -125.701], 6);
 
-L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}', {
+const MAPBOX_TILE_OPTIONS = {
     attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
     maxZoom: 18,
-    id: 'mapbox/streets-v11',
     tileSize: 512,
     zoomOffset: -1,
     accessToken: 'pk.eyJ1IjoibmdvdHRsaWViIiwiYSI6ImNrcGtlc2J5eDFodGwybm85bWR4Mjd5cncifQ.fCXujwpKwP1mbLXC2hklkw'
-}).addTo(map);
+};
+const MAPBOX_TILE_URL = 'https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}';
+
+const terrainLayer = L.tileLayer(MAPBOX_TILE_URL, { ...MAPBOX_TILE_OPTIONS, id: 'mapbox/streets-v11' });
+const satelliteLayer = L.tileLayer(MAPBOX_TILE_URL, { ...MAPBOX_TILE_OPTIONS, id: 'mapbox/satellite-streets-v11' });
+terrainLayer.addTo(map);
+
+L.control.layers({
+  'Terrain': terrainLayer,
+  'Satellite': satelliteLayer
+}, null, { position: 'topleft' }).addTo(map);
 
 const legend = L.control({position: 'bottomright'});
 legend.onAdd = function (map) {
@@ -81,10 +90,11 @@ speciesFilter.onAdd = function(map) {
       <select id="speciesSelect" class="form-select form-select-sm">
         <option value="">All Species</option>
       </select>
-      <div class="form-check mt-2">
-        <input class="form-check-input" type="checkbox" id="topTenCheckbox">
-        <label class="form-check-label" for="topTenCheckbox">Show top 10 only</label>
-      </div>
+      <select id="topNSelect" class="form-select form-select-sm mt-2" aria-label="Limit to top-ranked trees">
+        <option value="">All trees</option>
+        <option value="10">Top 10 per species</option>
+        <option value="30">Top 30 per species</option>
+      </select>
     </div>
   `;
   L.DomEvent.disableClickPropagation(div);
@@ -112,7 +122,7 @@ function addResultsToMap(results) {
   // Populate species dropdown with sorted unique species names
   const sortedSpecies = [...allSpecies].sort();
   const select = document.getElementById('speciesSelect');
-  const topTenCheckbox = document.getElementById('topTenCheckbox');
+  const topNSelect = document.getElementById('topNSelect');
   sortedSpecies.forEach(function(species) {
     const option = document.createElement('option');
     option.value = species;
@@ -121,7 +131,7 @@ function addResultsToMap(results) {
   });
 
   function applyFilters() {
-    const visibleMarkerItems = getVisibleMarkerItems(select.value, topTenCheckbox.checked);
+    const visibleMarkerItems = getVisibleMarkerItems(select.value, Number.parseInt(topNSelect.value, 10));
     const visibleMarkers = visibleMarkerItems.map(function(item) {
       return item.marker;
     });
@@ -136,27 +146,19 @@ function addResultsToMap(results) {
   }
 
   select.addEventListener('change', applyFilters);
-  topTenCheckbox.addEventListener('change', applyFilters);
+  topNSelect.addEventListener('change', applyFilters);
 }
 
-function getVisibleMarkerItems(selectedSpecies, showTopTen) {
-  const filteredItems = allMarkers
-    .filter(function(item) {
-      return !selectedSpecies || item.species === selectedSpecies;
-    });
-
-  if (!showTopTen) {
-    return filteredItems;
-  }
-
-  return filteredItems
-    .filter(function(item) {
-      return item.score !== null && !hasDisqualifyingScoreSuffix(item.scoreRaw);
-    })
-    .sort(function(a, b) {
-      return b.score - a.score;
-    })
-    .slice(0, 10);
+function getVisibleMarkerItems(selectedSpecies, topN) {
+  return allMarkers.filter(function(item) {
+    if (selectedSpecies && item.species !== selectedSpecies) {
+      return false;
+    }
+    if (Number.isFinite(topN)) {
+      return item.rank !== null && item.rank <= topN;
+    }
+    return true;
+  });
 }
 
 function initSpeciesFilterMobileToggle() {
@@ -207,13 +209,10 @@ function initSpeciesFilterMobileToggle() {
   setCollapsed(false);
 }
 
-function hasDisqualifyingScoreSuffix(scoreRaw) {
-  return /['"]\s*$/.test(String(scoreRaw || '').trim());
-}
-
-function parseTreeScore(scoreRaw) {
-  const normalized = String(scoreRaw || '').trim();
-  const parsed = Number.parseFloat(normalized);
+// rank is the registry's official per-species ranking; non-numeric values
+// ("multi" for multi-stemmed trees, or blank) mean the tree is unranked
+function parseTreeRank(rankRaw) {
+  const parsed = Number.parseInt(String(rankRaw || '').trim(), 10);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -256,8 +255,7 @@ function createMarker(tree) {
   allMarkers.push({
     marker: marker,
     species: tree.common_name || '',
-    scoreRaw: tree.tree_score,
-    score: parseTreeScore(tree.tree_score)
+    rank: parseTreeRank(tree.rank)
   });
 
   if (tree.common_name) {
@@ -288,12 +286,20 @@ function getValidTreeLatLng(tree) {
   return [lat, lng];
 }
 
+function extractPhotoUrls(photoLinkHTML) {
+  return [...String(photoLinkHTML || '').matchAll(/href="([^"]+)"/g)]
+    .map(function(match) {
+      return match[1];
+    });
+}
+
 function popupHTML(tree) {
   var output = "<dl>";
   const attrs = {
     "Tree": "common_name",
     "ID #": "tree_registry_id",
     "Nickname": "tree_nickname",
+    "Rank": "rank",
     "Score": "tree_score",
     "Height": "height_(m)",
     "DBH": "DBH_(m)",
@@ -316,7 +322,12 @@ function popupHTML(tree) {
     const val = tree[attrKey];
 
     if (val) {
-      const displayVal = attrKey === 'common_name' ? formatSpeciesDisplayName(val) : val;
+      let displayVal = val;
+      if (attrKey === 'common_name') {
+        displayVal = formatSpeciesDisplayName(val);
+      } else if (attrKey === 'rank' && val.trim() === 'multi') {
+        displayVal = 'n/a (multi-stemmed)';
+      }
       output += `<dt>${key}</dt><dd>${displayVal}</dd>\n`;
     }
   }
@@ -332,12 +343,18 @@ function popupHTML(tree) {
       </dd>`;
   }
 
-  // add photo links if present
+  // add photo thumbnails if present; each links to the full-size image
   if (parseInt(tree.has_photo)) {
-    output += `
-      <dt>Photos</dt>
-      <dd>${tree['all photo LINK']}</dd>
-    `;
+    const photoUrls = extractPhotoUrls(tree['all photo LINK']);
+    if (photoUrls.length) {
+      const thumbnails = photoUrls.map(function(url) {
+        return `<a href="${url}" target="_blank"><img src="${url}" loading="lazy" alt="Photo of this tree" /></a>`;
+      }).join('');
+      output += `<dt>Photos</dt><dd class="popup-photos">${thumbnails}</dd>`;
+    } else if ((tree['all photo LINK'] || '').trim()) {
+      // fall back to the raw links if the photo HTML doesn't match the expected format
+      output += `<dt>Photos</dt><dd>${tree['all photo LINK']}</dd>`;
+    }
   }
 
   output += "</dl>";

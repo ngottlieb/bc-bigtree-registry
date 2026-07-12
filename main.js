@@ -76,6 +76,9 @@ const BC_COORD_BOUNDS = {
 // Store all markers with their species name for filtering
 const allMarkers = [];
 const allSpecies = new Set();
+// ranks of ALL trees, including those without published coordinates,
+// so the top-N note can report how many of the top N aren't mappable
+const allTreeRanks = [];
 
 // Species filter control
 const speciesFilter = L.control({ position: 'topright' });
@@ -95,6 +98,7 @@ speciesFilter.onAdd = function(map) {
         <option value="10">Top 10 per species</option>
         <option value="30">Top 30 per species</option>
       </select>
+      <div id="topNNote" class="top-n-note" role="status"></div>
     </div>
   `;
   L.DomEvent.disableClickPropagation(div);
@@ -117,7 +121,10 @@ Papa.parse('data/BCBT_Mar_24_2026.csv', {
 });
 
 function addResultsToMap(results) {
-  results.data.forEach(function(x) { createMarker(x) });
+  results.data.forEach(function(x) {
+    allTreeRanks.push({ species: x.common_name || '', rank: parseTreeRank(x.rank) });
+    createMarker(x);
+  });
 
   // Populate species dropdown with sorted unique species names
   const sortedSpecies = [...allSpecies].sort();
@@ -131,13 +138,16 @@ function addResultsToMap(results) {
   });
 
   function applyFilters() {
-    const visibleMarkerItems = getVisibleMarkerItems(select.value, Number.parseInt(topNSelect.value, 10));
+    const topN = Number.parseInt(topNSelect.value, 10);
+    const visibleMarkerItems = getVisibleMarkerItems(select.value, topN);
     const visibleMarkers = visibleMarkerItems.map(function(item) {
       return item.marker;
     });
 
     markerCluster.clearLayers();
     markerCluster.addLayers(visibleMarkers);
+
+    updateTopNNote(topN, select.value, visibleMarkers.length);
 
     const bounds = L.featureGroup(visibleMarkers).getBounds();
     if (bounds.isValid()) {
@@ -147,6 +157,26 @@ function addResultsToMap(results) {
 
   select.addEventListener('change', applyFilters);
   topNSelect.addEventListener('change', applyFilters);
+}
+
+function updateTopNNote(topN, selectedSpecies, shownCount) {
+  const note = document.getElementById('topNNote');
+  if (!Number.isFinite(topN)) {
+    note.textContent = '';
+    return;
+  }
+
+  const totalRanked = allTreeRanks.filter(function(t) {
+    return (!selectedSpecies || t.species === selectedSpecies) && t.rank !== null && t.rank <= topN;
+  }).length;
+
+  if (shownCount < totalRanked) {
+    const hiddenCount = totalRanked - shownCount;
+    note.textContent = `Showing ${shownCount} of ${totalRanked} — ${hiddenCount} ` +
+      `${hiddenCount === 1 ? 'has a' : 'have'} hidden or unpublished location${hiddenCount === 1 ? '' : 's'}.`;
+  } else {
+    note.textContent = '';
+  }
 }
 
 function getVisibleMarkerItems(selectedSpecies, topN) {
